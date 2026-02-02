@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Alert } from 'react-native';
 import { MusicData, Note } from '@utils/types';
@@ -89,10 +89,8 @@ export class ExportService {
    */
   static async shareFile(filepath: string): Promise<void> {
     try {
-      const fileExists = await FileSystem.getInfoAsync(filepath);
-      if (!fileExists.exists) {
-        throw new Error('File does not exist');
-      }
+      // File existence will be verified by Sharing.shareAsync
+      // Just attempt to share directly
 
       await Sharing.shareAsync(filepath, {
         mimeType: 'application/*',

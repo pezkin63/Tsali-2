@@ -60,7 +60,7 @@ export const sortItems = (
 
   switch (sortBy) {
     case 'recent':
-      return sorted.sort((a, b) => b.dateScanned - a.dateScanned);
+      return sorted.sort((a, b) => (b.dateScanned || 0) - (a.dateScanned || 0));
     case 'name':
       return sorted.sort((a, b) => a.filename.localeCompare(b.filename));
     case 'played':

@@ -192,8 +192,8 @@ const LibraryScreen: React.FC<LibraryScreenProps> = ({ navigation }) => {
 
         {/* Thumbnail */}
         <View style={styles.thumbnailContainer}>
-          {item.thumbnail ? (
-            <Image source={{ uri: item.thumbnail }} style={styles.thumbnail} />
+          {item.thumbnailPath ? (
+            <Image source={{ uri: item.thumbnailPath }} style={styles.thumbnail} />
           ) : (
             <View style={styles.thumbnailPlaceholder}>
               <MaterialCommunityIcons name="music" size={32} color={COLORS.primary} />

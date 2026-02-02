@@ -12,11 +12,14 @@ import {
   Modal,
 } from 'react-native';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import Slider from '@react-native-community/slider';
 import { StorageService } from '@services/storage';
 import { ExportService } from '@services/export';
+import { MIDIService } from '@services/MIDIService';
+import { SynthesizerService as _SynthesizerService } from '@services/SynthesizerService'; // Used for type imports via SynthesisWebView
+import { SynthesisWebView } from '@components/SynthesisWebView';
 import { ScannedItem } from '@utils/types';
 import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS } from '@utils/constants';
 import { formatDuration, getTimeAgo } from '@utils/helpers';
@@ -32,10 +35,20 @@ const ViewerScreen: React.FC<ViewerScreenProps> = ({ route, navigation }) => {
   const [item, setItem] = useState<ScannedItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(3000); // Default 3 seconds
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [showExportModal, setShowExportModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [satbSelection, setSatbSelection] = useState({
+    soprano: true,
+    alto: true,
+    tenor: true,
+    bass: true,
+  });
+  const [showSatbModal, setShowSatbModal] = useState(false);
+  const [_synthesizerReady, setSynthesizerReady] = useState(false); // WebView synthesizer initialization flag
 
   useEffect(() => {
     loadItem();
@@ -43,6 +56,19 @@ const ViewerScreen: React.FC<ViewerScreenProps> = ({ route, navigation }) => {
       headerShown: true,
       title: '',
     });
+
+    // Subscribe to MIDI playback status updates
+    const midiService = MIDIService.getInstance();
+    const unsubscribe = midiService.onStatusChange((info) => {
+      console.log('ViewerScreen received playback update:', info);
+      setCurrentTime(info.currentPosition);
+      setPlaybackSpeed(info.speed);
+      setDuration(info.duration);
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const loadItem = async () => {
@@ -67,8 +93,39 @@ const ViewerScreen: React.FC<ViewerScreenProps> = ({ route, navigation }) => {
   };
 
   const togglePlayback = async () => {
-    // TODO: Integrate MIDIService for actual playback
-    console.log('Playback toggle - MIDIService integration pending');
+    try {
+      if (!item?.musicData) {
+        Alert.alert('No Data', 'No music data available for playback');
+        return;
+      }
+
+      const midiService = MIDIService.getInstance();
+
+      if (isPlaying) {
+        await midiService.pause();
+        setIsPlaying(false);
+      } else {
+        if (!midiService.isLoaded()) {
+          // Generate and load MIDI from music data
+          await midiService.generateMIDIFromMusicData(item.musicData, satbSelection);
+        }
+        await midiService.play();
+        setIsPlaying(true);
+      }
+    } catch (error) {
+      console.error('Playback error:', error);
+      Alert.alert('Error', 'Failed to start playback: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      setIsPlaying(false);
+    }
+  };
+
+  const getActiveParts = (): string[] => {
+    const parts = [];
+    if (satbSelection.soprano) parts.push('Soprano');
+    if (satbSelection.alto) parts.push('Alto');
+    if (satbSelection.tenor) parts.push('Tenor');
+    if (satbSelection.bass) parts.push('Bass');
+    return parts.length > 0 ? parts : ['All Parts'];
   };
 
   const handleShare = () => {
@@ -124,15 +181,17 @@ const ViewerScreen: React.FC<ViewerScreenProps> = ({ route, navigation }) => {
         // Save to documents or share
         const filename = `${item.filename || 'music'}.${format === 'midi' ? 'mid' : format === 'musicxml' ? 'xml' : 'json'}`;
         
-        // Try to share directly - use Paths.cache from expo-file-system
-        const cacheFile = new FileSystem.File(FileSystem.Paths.cache, filename);
-        await cacheFile.write(exportedData);
+        // Save to cache directory
+        const cachePath = `${FileSystem.cacheDirectory}${filename}`;
+        await FileSystem.writeAsStringAsync(cachePath, exportedData, {
+          encoding: 'utf8',
+        });
         
         Alert.alert('Success', `Exported as ${format.toUpperCase()}`, [
           { text: 'Done' },
           {
             text: 'Share',
-            onPress: () => shareExport(cacheFile.uri, filename),
+            onPress: () => shareExport(cachePath, filename),
           },
         ]);
       }
@@ -169,6 +228,9 @@ const ViewerScreen: React.FC<ViewerScreenProps> = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Hidden SynthesisWebView for FluidSynth audio synthesis */}
+      <SynthesisWebView onReady={() => setSynthesizerReady(true)} />
+      
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Music Image */}
         {item.imagePath && (
@@ -185,7 +247,7 @@ const ViewerScreen: React.FC<ViewerScreenProps> = ({ route, navigation }) => {
           </Text>
 
           <View style={styles.metaContainer}>
-            <MetaItem icon="calendar" text={getTimeAgo(item.dateScanned)} />
+            {item.dateScanned && <MetaItem icon="calendar" text={getTimeAgo(item.dateScanned)} />}
             {item.duration && <MetaItem icon="schedule" text={formatDuration(item.duration)} />}
             <MetaItem
               icon="play-arrow"
@@ -263,15 +325,30 @@ const ViewerScreen: React.FC<ViewerScreenProps> = ({ route, navigation }) => {
 
         {/* Player Controls */}
         <View style={styles.playerSection}>
-          <Text style={styles.playerTitle}>Playback</Text>
+          <View style={styles.playerHeader}>
+            <Text style={styles.playerTitle}>Playback</Text>
+            <TouchableOpacity
+              style={styles.satbButton}
+              onPress={() => setShowSatbModal(true)}
+            >
+              <MaterialCommunityIcons name="music-box-multiple" size={20} color={COLORS.primary} />
+              <Text style={styles.satbButtonText}>SATB</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Active Parts Display */}
+          <View style={styles.activePartsContainer}>
+            <Text style={styles.activePartsLabel}>Playing:</Text>
+            <Text style={styles.activePartsText}>{getActiveParts().join(', ')}</Text>
+          </View>
 
           {/* Play Button */}
           <TouchableOpacity
-            style={styles.playButton}
+            style={[styles.playButton, isPlaying && styles.playButtonActive]}
             onPress={togglePlayback}
           >
             <MaterialIcons
-              name={'play-arrow'}
+              name={isPlaying ? 'pause' : 'play-arrow'}
               size={40}
               color="white"
             />
@@ -285,14 +362,24 @@ const ViewerScreen: React.FC<ViewerScreenProps> = ({ route, navigation }) => {
             <Slider
               style={styles.slider}
               value={currentTime}
-              onValueChange={setCurrentTime}
+              onValueChange={async (value) => {
+                setCurrentTime(value);
+                // Seek to position if playing
+                if (isPlaying) {
+                  try {
+                    await MIDIService.getInstance().seek(value);
+                  } catch (error) {
+                    console.error('Seek error:', error);
+                  }
+                }
+              }}
               minimumValue={0}
-              maximumValue={60000}
+              maximumValue={Math.max(duration, 3000)}
               minimumTrackTintColor={COLORS.primary}
               maximumTrackTintColor={COLORS.border}
             />
             <Text style={styles.timeText}>
-              {formatDuration(60000)}
+              {formatDuration(duration)}
             </Text>
           </View>
 
@@ -359,6 +446,106 @@ const ViewerScreen: React.FC<ViewerScreenProps> = ({ route, navigation }) => {
             isDanger
           />
         </View>
+
+        {/* SATB Selection Modal */}
+        <Modal
+          visible={showSatbModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowSatbModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.satbModalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Voices</Text>
+                <TouchableOpacity
+                  onPress={() => setShowSatbModal(false)}
+                  style={styles.closeButton}
+                >
+                  <MaterialIcons name="close" size={24} color={COLORS.text} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.satbOptionsContainer}>
+                {(['soprano', 'alto', 'tenor', 'bass'] as const).map((voice) => (
+                  <TouchableOpacity
+                    key={voice}
+                    style={[
+                      styles.satbOption,
+                      satbSelection[voice] && styles.satbOptionActive,
+                    ]}
+                    onPress={() =>
+                      setSatbSelection((prev) => ({
+                        ...prev,
+                        [voice]: !prev[voice],
+                      }))
+                    }
+                  >
+                    <View
+                      style={[
+                        styles.satbCheckbox,
+                        satbSelection[voice] && styles.satbCheckboxActive,
+                      ]}
+                    >
+                      {satbSelection[voice] && (
+                        <MaterialIcons name="check" size={20} color="white" />
+                      )}
+                    </View>
+                    <View style={styles.satbVoiceInfo}>
+                      <Text style={styles.satbVoiceTitle}>
+                        {voice.charAt(0).toUpperCase() + voice.slice(1)}
+                      </Text>
+                      <Text style={styles.satbVoiceDesc}>
+                        {voice === 'soprano'
+                          ? 'Highest voice (treble)'
+                          : voice === 'alto'
+                            ? 'High-middle voice'
+                            : voice === 'tenor'
+                              ? 'Low-middle voice'
+                              : 'Lowest voice (bass)'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.satbButtonsContainer}>
+                <TouchableOpacity
+                  style={styles.satbButtonSecondary}
+                  onPress={() =>
+                    setSatbSelection({
+                      soprano: true,
+                      alto: true,
+                      tenor: true,
+                      bass: true,
+                    })
+                  }
+                >
+                  <Text style={styles.satbButtonSecondaryText}>All</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.satbButtonSecondary}
+                  onPress={() =>
+                    setSatbSelection({
+                      soprano: false,
+                      alto: false,
+                      tenor: false,
+                      bass: false,
+                    })
+                  }
+                >
+                  <Text style={styles.satbButtonSecondaryText}>None</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.satbButtonPrimary}
+                  onPress={() => setShowSatbModal(false)}
+                >
+                  <Text style={styles.satbButtonPrimaryText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {/* Export Modal */}
         <Modal
@@ -732,6 +919,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+    padding: 0,
   },
   modalContent: {
     backgroundColor: 'white',
@@ -807,6 +995,132 @@ const styles = StyleSheet.create({
   exportOptionDesc: {
     ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
+  },
+  playerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  satbButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: `${COLORS.primary}15`,
+  },
+  satbButtonText: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  activePartsContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: `${COLORS.primary}10`,
+    borderRadius: BORDER_RADIUS.md,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.primary,
+  },
+  activePartsLabel: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+  },
+  activePartsText: {
+    ...TYPOGRAPHY.body1,
+    color: COLORS.text,
+    fontWeight: '600',
+    marginTop: SPACING.xs,
+  },
+  playButtonActive: {
+    backgroundColor: COLORS.warning,
+  },
+  satbModalContent: {
+    backgroundColor: COLORS.background,
+    borderTopLeftRadius: BORDER_RADIUS.lg,
+    borderTopRightRadius: BORDER_RADIUS.lg,
+    paddingTop: SPACING.lg,
+    maxHeight: '80%',
+  },
+  satbOptionsContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    gap: SPACING.md,
+  },
+  satbOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: COLORS.surface,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  satbOptionActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: `${COLORS.primary}10`,
+  },
+  satbCheckbox: {
+    width: 32,
+    height: 32,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.md,
+  },
+  satbCheckboxActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  satbVoiceInfo: {
+    flex: 1,
+  },
+  satbVoiceTitle: {
+    ...TYPOGRAPHY.body1,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  satbVoiceDesc: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+  },
+  satbButtonsContainer: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  satbButtonSecondary: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    alignItems: 'center',
+  },
+  satbButtonSecondaryText: {
+    ...TYPOGRAPHY.body2,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  satbButtonPrimary: {
+    flex: 1.2,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+  },
+  satbButtonPrimaryText: {
+    ...TYPOGRAPHY.body2,
+    color: 'white',
+    fontWeight: '600',
   },
 });
 

@@ -106,14 +106,16 @@ const FilePickerScreen: React.FC<FilePickerScreenProps> = ({ navigation }) => {
           onPress={pickFile}
           disabled={isLoading}
         >
-          {isLoading ? (
-            <ActivityIndicator size="small" color="white" />
-          ) : (
-            <>
-              <MaterialIcons name="cloud-upload" size={24} color="white" />
-              <Text style={styles.primaryButtonText}>Choose File</Text>
-            </>
-          )}
+          <View style={styles.primaryButtonContent}>
+            {isLoading ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <>
+                <MaterialIcons name="cloud-upload" size={24} color="white" />
+                <Text style={styles.primaryButtonText}>Choose File</Text>
+              </>
+            )}
+          </View>
         </TouchableOpacity>
 
         {selectedFile && (
@@ -121,8 +123,10 @@ const FilePickerScreen: React.FC<FilePickerScreenProps> = ({ navigation }) => {
             style={styles.processButton}
             onPress={handleProcessFile}
           >
-            <MaterialIcons name="arrow-forward" size={20} color="white" />
-            <Text style={styles.processButtonText}>Process File</Text>
+            <View style={styles.processButtonContent}>
+              <MaterialIcons name="arrow-forward" size={20} color="white" />
+              <Text style={styles.processButtonText}>Process File</Text>
+            </View>
           </TouchableOpacity>
         )}
 
@@ -251,6 +255,11 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.6,
   },
+  primaryButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
   primaryButtonText: {
     ...TYPOGRAPHY.button,
     color: 'white',
@@ -263,6 +272,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: 'row',
+    gap: SPACING.md,
+  },
+  processButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.md,
   },
   processButtonText: {

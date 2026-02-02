@@ -162,10 +162,12 @@ const PhotoPickerScreen: React.FC<PhotoPickerScreenProps> = ({ navigation }) => 
                 style={[styles.button, styles.processButton]}
                 onPress={handleProcessPhotos}
               >
-                <MaterialIcons name="check" size={20} color="white" />
-                <Text style={styles.processButtonText}>
-                  Process ({selectedPhotos.size})
-                </Text>
+                <View style={styles.processButtonContent}>
+                  <MaterialIcons name="check" size={20} color="white" />
+                  <Text style={styles.processButtonText}>
+                    Process ({selectedPhotos.size})
+                  </Text>
+                </View>
               </TouchableOpacity>
             </View>
           )}
@@ -300,6 +302,12 @@ const styles = StyleSheet.create({
   },
   processButton: {
     backgroundColor: COLORS.primary,
+  },
+  processButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
   },
   processButtonText: {
     ...TYPOGRAPHY.button,

@@ -255,14 +255,14 @@ export const RootNavigator = () => {
     try {
       const completed = await StorageService.getPreference('onboardingComplete');
       setOnboardingComplete(completed === true);
-      if (!isLoading) {
+      if (isLoading) {
         setIsLoading(false);
       }
     } catch (error) {
       console.error('Error checking onboarding status:', error);
       // Default to showing onboarding if we can't read preference
       setOnboardingComplete(false);
-      if (!isLoading) {
+      if (isLoading) {
         setIsLoading(false);
       }
     }

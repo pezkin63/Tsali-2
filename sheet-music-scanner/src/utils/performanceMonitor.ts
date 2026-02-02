@@ -331,7 +331,9 @@ export class Memoizer {
    * Clear memoization cache
    */
   static clearCache(): void {
-    Memoizer.cache.clear();
+    if (Memoizer.cache) {
+      Memoizer.cache.clear();
+    }
   }
 }
 

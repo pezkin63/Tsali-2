@@ -13,10 +13,12 @@ import {
 import Slider from '@react-native-community/slider';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, FILE_PATHS } from '@utils/constants';
 import { generateId } from '@utils/helpers';
+import { StorageService } from '@services/storage';
+import { ScannedItem } from '@utils/types';
 
 interface ImageEditorScreenProps {
   route: any;
@@ -61,9 +63,9 @@ const ImageEditorScreen: React.FC<ImageEditorScreenProps> = ({ route, navigation
 
       // Create directory if it doesn't exist
       const directory = `${FileSystem.documentDirectory}${FILE_PATHS.SCANS}`;
-      const dirInfo = await FileSystem.getInfoAsync(directory);
-
-      if (!dirInfo.exists) {
+      try {
+        await FileSystem.readDirectoryAsync(directory);
+      } catch {
         await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
       }
 
@@ -85,9 +87,9 @@ const ImageEditorScreen: React.FC<ImageEditorScreenProps> = ({ route, navigation
 
       const thumbnailPath = `${FileSystem.documentDirectory}${FILE_PATHS.THUMBNAILS}thumb_${filename}`;
       const thumbnailDir = `${FileSystem.documentDirectory}${FILE_PATHS.THUMBNAILS}`;
-      const thumbDirInfo = await FileSystem.getInfoAsync(thumbnailDir);
-
-      if (!thumbDirInfo.exists) {
+      try {
+        await FileSystem.readDirectoryAsync(thumbnailDir);
+      } catch {
         await FileSystem.makeDirectoryAsync(thumbnailDir, { intermediates: true });
       }
 
@@ -96,11 +98,32 @@ const ImageEditorScreen: React.FC<ImageEditorScreenProps> = ({ route, navigation
         to: thumbnailPath,
       });
 
-      // Navigate to viewer with saved item
-      navigation.navigate('Viewer', {
-        itemId: generateId(),
+      // Create and save scanned item metadata
+      const itemId = generateId();
+      
+      // Generate demo music data with SATB voices
+      const demoMusicData = generateDemoMusicData();
+      
+      const scannedItem: ScannedItem = {
+        id: itemId,
+        filename: filename,
         imagePath: filepath,
         thumbnailPath: thumbnailPath,
+        dateScanned: Date.now(),
+        duration: 0,
+        title: `Scan ${new Date().toLocaleDateString()}`,
+        description: '',
+        musicData: demoMusicData,
+        playCount: 0,
+        lastPlayed: null,
+      };
+
+      // Save to storage
+      await StorageService.addScannedItem(scannedItem);
+
+      // Navigate to viewer with saved item
+      navigation.navigate('Viewer', {
+        itemId: itemId,
       });
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -110,6 +133,67 @@ const ImageEditorScreen: React.FC<ImageEditorScreenProps> = ({ route, navigation
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const generateDemoMusicData = (): MusicData => {
+    // Generate demo music data with SATB voices for testing
+    return {
+      title: 'Scanned Sheet Music',
+      composer: 'Unknown Composer',
+      timeSignature: '4/4',
+      tempo: 120,
+      key: 'C Major',
+      confidence: 0.85,
+      noteCount: 16,
+      pages: 1,
+      currentPage: 1,
+      measures: [
+        {
+          number: 1,
+          timeSignature: '4/4',
+          notes: [
+            { pitch: 'C', octave: 5, duration: 0.5, voice: 'soprano' },
+            { pitch: 'D', octave: 5, duration: 0.5, voice: 'soprano' },
+            { pitch: 'E', octave: 5, duration: 0.5, voice: 'soprano' },
+            { pitch: 'F', octave: 5, duration: 0.5, voice: 'soprano' },
+            { pitch: 'G', octave: 4, duration: 0.5, voice: 'alto' },
+            { pitch: 'A', octave: 4, duration: 0.5, voice: 'alto' },
+            { pitch: 'B', octave: 4, duration: 0.5, voice: 'alto' },
+            { pitch: 'C', octave: 4, duration: 0.5, voice: 'alto' },
+            { pitch: 'E', octave: 3, duration: 0.5, voice: 'tenor' },
+            { pitch: 'F', octave: 3, duration: 0.5, voice: 'tenor' },
+            { pitch: 'G', octave: 3, duration: 0.5, voice: 'tenor' },
+            { pitch: 'A', octave: 3, duration: 0.5, voice: 'tenor' },
+            { pitch: 'C', octave: 2, duration: 0.5, voice: 'bass' },
+            { pitch: 'D', octave: 2, duration: 0.5, voice: 'bass' },
+            { pitch: 'E', octave: 2, duration: 0.5, voice: 'bass' },
+            { pitch: 'F', octave: 2, duration: 0.5, voice: 'bass' },
+          ],
+        },
+        {
+          number: 2,
+          timeSignature: '4/4',
+          notes: [
+            { pitch: 'G', octave: 5, duration: 0.5, voice: 'soprano' },
+            { pitch: 'A', octave: 5, duration: 0.5, voice: 'soprano' },
+            { pitch: 'B', octave: 5, duration: 0.5, voice: 'soprano' },
+            { pitch: 'C', octave: 6, duration: 0.5, voice: 'soprano' },
+            { pitch: 'D', octave: 4, duration: 0.5, voice: 'alto' },
+            { pitch: 'E', octave: 4, duration: 0.5, voice: 'alto' },
+            { pitch: 'F', octave: 4, duration: 0.5, voice: 'alto' },
+            { pitch: 'G', octave: 4, duration: 0.5, voice: 'alto' },
+            { pitch: 'B', octave: 3, duration: 0.5, voice: 'tenor' },
+            { pitch: 'C', octave: 4, duration: 0.5, voice: 'tenor' },
+            { pitch: 'D', octave: 4, duration: 0.5, voice: 'tenor' },
+            { pitch: 'E', octave: 4, duration: 0.5, voice: 'tenor' },
+            { pitch: 'G', octave: 2, duration: 0.5, voice: 'bass' },
+            { pitch: 'A', octave: 2, duration: 0.5, voice: 'bass' },
+            { pitch: 'B', octave: 2, duration: 0.5, voice: 'bass' },
+            { pitch: 'C', octave: 3, duration: 0.5, voice: 'bass' },
+          ],
+        },
+      ],
+    };
   };
 
   const rotateImage = (degrees: number) => {

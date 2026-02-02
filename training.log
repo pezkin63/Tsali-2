@@ -1,0 +1,8 @@
+2026-01-29 14:46:47.269203: I external/local_xla/xla/tsl/cuda/cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
+2026-01-29 14:46:48.066064: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2026-01-29 14:46:51.025829: I external/local_xla/xla/tsl/cuda/cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
+Traceback (most recent call last):
+  File "/workspaces/Tsali-2/train_omr_models.py", line 12, in <module>
+    import cv2
+ImportError: libGL.so.1: cannot open shared object file: No such file or directory

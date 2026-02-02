@@ -3,12 +3,16 @@ export interface ScannedItem {
   id: string;
   filename: string;
   imagePath: string;
-  thumbnail: string;
+  thumbnailPath?: string;
+  thumbnail?: string;
   musicData?: MusicData;
-  dateScanned: number;
+  timestamp?: number;
+  dateScanned?: number;
   lastPlayed?: number;
   playCount: number;
   duration?: number;
+  title?: string;
+  description?: string;
   notes?: string;
   processingTime?: number;
   confidence?: number;
@@ -41,6 +45,7 @@ export interface Note {
   accidental?: 'sharp' | 'flat' | 'natural';
   dynamics?: string;
   articulation?: string;
+  voice?: 'soprano' | 'alto' | 'tenor' | 'bass';
 }
 
 export interface AppSettings {
